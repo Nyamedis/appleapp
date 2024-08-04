@@ -26,14 +26,3 @@ workflows:
     artifacts:
       - build/ipa/*.ipa
       - logs
-
-    publishing:
-      scripts:
-        - name: Deploy to App Store
-          script: |
-            app_store_connect_api_key_file="app_store_connect_api_key.json"
-            echo "$APP_STORE_CONNECT_API_KEY" | base64 --decode > $app_store_connect_api_key_file
-            app_store_connect_publish \
-              --api-key $app_store_connect_api_key_file \
-              --ipa-path "build/ipa/*.ipa" \
-              --skip-waiting-for-processing true
