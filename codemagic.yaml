@@ -1,111 +1,39 @@
-import SwiftUI
+workflows:
+  ios-app:
+    name: iOS App Workflow
+    environment:
+      vars:
+        XCODE_WORKSPACE: "YourAppName.xcworkspace" # Wenn Sie ein Workspace verwenden
+        XCODE_PROJECT: "YourAppName.xcodeproj" # Wenn Sie ein einfaches Xcode-Projekt verwenden
+        XCODE_SCHEME: "YourAppName" # Ihr Build-Scheme
+        IOS_SIGNING_CERTIFICATE: Encrypted(...) # Ihr verschlüsseltes Zertifikat
+        IOS_PROVISIONING_PROFILE: Encrypted(...) # Ihr verschlüsseltes Provisioning Profile
+        APP_STORE_CONNECT_API_KEY: Encrypted(...) # Optional, für automatische Veröffentlichung
+      groups:
+        - apple_credentials
+        - signing_files
+      xcode: latest
+    scripts:
+      - name: Install Dependencies
+        script: bundle install
+      - name: Install CocoaPods Dependencies
+        script: pod install
+      - name: Build
+        script: xcodebuild -workspace "$XCODE_WORKSPACE" -scheme "$XCODE_SCHEME" -configuration Release -sdk iphoneos CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY="iPhone Developer" PROVISIONING_PROFILE="$IOS_PROVISIONING_PROFILE"
+      - name: Export .ipa
+        script: xcodebuild -exportArchive -archivePath build/archive.xcarchive -exportOptionsPlist ./exportOptions.plist -exportPath build/ipa
 
-struct ContentView: View {
-    @ObservedObject var taskManager = TaskManager()
-    @State private var showingAddTaskView = false
-    
-    var body: some View {
-        NavigationView {
-            VStack {
-                List {
-                    ForEach(taskManager.tasks) { task in
-                        TaskRow(task: task)
-                    }
-                }
-                .listStyle(InsetGroupedListStyle())
-                .navigationBarTitle("Meine Aufgaben", displayMode: .large)
-                .navigationBarItems(trailing: Button(action: {
-                    showingAddTaskView = true
-                }) {
-                    Image(systemName: "plus")
-                        .foregroundColor(.blue)
-                })
-                .sheet(isPresented: $showingAddTaskView) {
-                    AddTaskView(taskManager: taskManager)
-                }
-            }
-            .background(Color(.systemGroupedBackground))
-        }
-    }
-}
+    artifacts:
+      - build/ipa/*.ipa
+      - logs
 
-struct TaskRow: View {
-    var task: Task
-    
-    var body: some View {
-        HStack {
-            VStack(alignment: .leading) {
-                Text(task.title)
-                    .font(.headline)
-                    .strikethrough(task.isCompleted, color: .gray)
-                Text(task.description)
-                    .font(.subheadline)
-                    .foregroundColor(.gray)
-                Text(dateToString(task.dueDate))
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
-            Spacer()
-            if task.isCompleted {
-                Image(systemName: "checkmark.circle")
-                    .foregroundColor(.green)
-            } else {
-                Image(systemName: "circle")
-                    .foregroundColor(.gray)
-            }
-        }
-        .padding()
-        .background(task.isCompleted ? Color(.systemGray5) : Color.white)
-        .cornerRadius(10)
-        .shadow(radius: 1)
-    }
-    
-    func dateToString(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateStyle = .short
-        return formatter.string(from: date)
-    }
-}
-
-struct AddTaskView: View {
-    @ObservedObject var taskManager: TaskManager
-    @State private var title = ""
-    @State private var description = ""
-    @State private var dueDate = Date()
-    @Environment(\.presentationMode) var presentationMode
-    
-    var body: some View {
-        NavigationView {
-            Form {
-                Section(header: Text("Aufgabeninfo")) {
-                    TextField("Titel", text: $title)
-                        .padding()
-                        .background(Color(.systemGray6))
-                        .cornerRadius(8)
-                    TextField("Beschreibung", text: $description)
-                        .padding()
-                        .background(Color(.systemGray6))
-                        .cornerRadius(8)
-                    DatePicker("Fälligkeitsdatum", selection: $dueDate, displayedComponents: .date)
-                        .padding()
-                        .background(Color(.systemGray6))
-                        .cornerRadius(8)
-                }
-            }
-            .background(Color(.systemGroupedBackground))
-            .navigationBarTitle("Neue Aufgabe", displayMode: .inline)
-            .navigationBarItems(leading: Button("Abbrechen") {
-                presentationMode.wrappedValue.dismiss()
-            }, trailing: Button("Speichern") {
-                taskManager.addTask(title: title, description: description, dueDate: dueDate)
-                presentationMode.wrappedValue.dismiss()
-            })
-        }
-    }
-}
-
-struct ContentView_Previews: PreviewProvider {
-    static var previews: some View {
-        ContentView()
-    }
-}
+    publishing:
+      scripts:
+        - name: Deploy to App Store
+          script: |
+            app_store_connect_api_key_file="app_store_connect_api_key.json"
+            echo "$APP_STORE_CONNECT_API_KEY" | base64 --decode > $app_store_connect_api_key_file
+            app_store_connect_publish \
+              --api-key $app_store_connect_api_key_file \
+              --ipa-path "build/ipa/*.ipa" \
+              --skip-waiting-for-processing true
